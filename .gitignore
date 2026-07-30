@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.log
+
+# Never commit secrets or the saved OAuth token
+.env
+.env.*
+
+# Local drafts folder if placed inside the repo
+linkedin-drafts/

@@ -1,0 +1,23 @@
+{
+  "name": "linkedin-mcp",
+  "version": "0.1.0",
+  "description": "Personal LinkedIn MCP server — draft locally, publish posts via API, keep articles manual.",
+  "type": "module",
+  "bin": {
+    "linkedin-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "auth": "tsc && node dist/oauth.js",
+    "start": "node dist/index.js",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.4.0"
+  }
+}
