@@ -16,18 +16,27 @@ import {
   setStatus,
 } from "./drafts.js";
 import {
-  ghWhoAmI,
-  listRepos,
-  listCommits,
-  getCommit,
-  listReleases,
-  getFileContent,
-  createOrUpdateFile,
-  createGist,
-  createIssue,
-  createPullRequest,
-  searchCode,
-} from "./github.js";
+  listProfileSections,
+  readProfileSection,
+  saveProfileSection,
+  setProfileSectionStatus,
+  lintProfileSection,
+} from "./profile.js";
+import {
+  saveMasterResume,
+  readMasterResume,
+  saveTailoredResume,
+  readTailoredResume,
+  listTailoredResumes,
+  setTailoredResumeStatus,
+} from "./resume.js";
+import {
+  saveContact,
+  readContact,
+  listContacts,
+  setContactStatus,
+  logMessage,
+} from "./outreach.js";
 
 const server = new McpServer({ name: "linkedin-mcp", version: "0.1.0" });
 
@@ -192,160 +201,190 @@ server.tool(
   }
 );
 
-/* ---------- GITHUB (full-access personal token) ---------- */
+/* ---------- PROFILE OPTIMIZER (local — LinkedIn has no profile-write API) ---------- */
 
 server.tool(
-  "github_who_am_i",
-  "Show the authenticated GitHub identity.",
+  "list_profile_sections",
+  "List all tracked profile sections (headline, about, skills, etc.) with status.",
   {},
   async () => {
-    const me = await ghWhoAmI();
-    return text(`${me.login}${me.name ? ` (${me.name})` : ""}`);
+    const secs = listProfileSections();
+    if (!secs.length) return text("No profile sections tracked yet.");
+    return text(secs.map((s) => `${s.section} [${s.status}] (updated ${s.updated_at})`).join("\n"));
   }
 );
 
 server.tool(
-  "github_list_repos",
-  "List your GitHub repos, most recently updated first.",
-  { per_page: z.number().default(30) },
-  async ({ per_page }) => {
-    const repos = await listRepos(per_page);
+  "read_profile_section",
+  "Read a tracked profile section's current text.",
+  { section: z.string().describe("e.g. headline, about, skills, featured.") },
+  async ({ section }) => {
+    const s = readProfileSection(section);
+    return text(`[${s.status}]\n\n${s.body}`);
+  }
+);
+
+server.tool(
+  "save_profile_section",
+  "Save a profile section draft (e.g. after rewriting a headline or About for keyword strength). You still paste the result into LinkedIn by hand.",
+  {
+    section: z.string().describe("e.g. headline, about, skills, featured."),
+    body: z.string(),
+    status: z.enum(["draft", "current"]).default("draft"),
+  },
+  async ({ section, body, status }) => {
+    saveProfileSection(section, body, status);
+    return text(`Saved "${section}" as ${status}.`);
+  }
+);
+
+server.tool(
+  "set_profile_section_status",
+  "Mark a profile section as 'current' once you've pasted it into LinkedIn, or 'draft' while iterating.",
+  { section: z.string(), status: z.enum(["draft", "current"]) },
+  async ({ section, status }) => {
+    setProfileSectionStatus(section, status);
+    return text(`"${section}" is now ${status}.`);
+  }
+);
+
+server.tool(
+  "lint_profile_section",
+  "Check a profile section against LinkedIn's real character limits (headline 220, about/featured 2600).",
+  { section: z.string(), text: z.string() },
+  async (args) => {
+    const r = lintProfileSection(args.section, args.text);
     return text(
-      repos.map((r) => `${r.full_name}${r.private ? " [private]" : ""} — ${r.description ?? ""}`).join("\n")
+      `chars: ${r.charCount}${r.limit ? `/${r.limit}` : ""}\nok: ${r.ok}\n${r.warnings.map((w) => "- " + w).join("\n") || "no warnings"}`
     );
   }
 );
 
+/* ---------- RESUME TAILORING (local, git-friendly versions) ---------- */
+
 server.tool(
-  "github_list_commits",
-  "List commits on a repo, optionally filtered by time window, author, or branch.",
+  "save_master_resume",
+  "Save/overwrite your master resume — the base every tailored version is built from.",
+  { body: z.string() },
+  async ({ body }) => {
+    saveMasterResume(body);
+    return text("Saved master resume.");
+  }
+);
+
+server.tool(
+  "read_master_resume",
+  "Read your master resume.",
+  {},
+  async () => text(readMasterResume())
+);
+
+server.tool(
+  "save_tailored_resume",
+  "Save a resume version tailored to a specific job/company.",
   {
-    owner: z.string(),
-    repo: z.string(),
-    since: z.string().optional().describe("ISO datetime."),
-    until: z.string().optional().describe("ISO datetime."),
-    author: z.string().optional(),
-    sha: z.string().optional().describe("Branch, tag, or commit SHA to start from."),
-    per_page: z.number().default(30),
+    slug: z.string().describe("Filename-safe id, e.g. acme-staff-swe."),
+    body: z.string(),
+    company: z.string(),
+    role: z.string(),
+    status: z.enum(["draft", "sent"]).default("draft"),
   },
-  async ({ owner, repo, since, until, author, sha, per_page }) => {
-    const commits = await listCommits(owner, repo, { since, until, author, sha, perPage: per_page });
-    return text(
-      commits
-        .map((c) => `${c.sha.slice(0, 7)} ${c.commit.author.date} — ${c.commit.message.split("\n")[0]}`)
-        .join("\n") || "No commits found."
-    );
+  async ({ slug, body, company, role, status }) => {
+    saveTailoredResume(slug, body, company, role, status);
+    return text(`Saved tailored resume "${slug}" for ${role} at ${company} (${status}).`);
   }
 );
 
 server.tool(
-  "github_get_commit",
-  "Get one commit's full message and per-file diffs — use this to summarize what changed.",
-  { owner: z.string(), repo: z.string(), sha: z.string() },
-  async ({ owner, repo, sha }) => {
-    const c = await getCommit(owner, repo, sha);
-    const filesText = c.files
-      .map((f) => `--- ${f.filename} (${f.status}, +${f.additions}/-${f.deletions}) ---\n${f.patch ?? "(no patch, binary or too large)"}`)
-      .join("\n\n");
-    return text(`${c.commit.message}\n\n${filesText}`);
+  "read_tailored_resume",
+  "Read a tailored resume by slug.",
+  { slug: z.string() },
+  async ({ slug }) => {
+    const t = readTailoredResume(slug);
+    return text(`[${t.company} — ${t.role} — ${t.status}]\n\n${t.body}`);
   }
 );
 
 server.tool(
-  "github_list_releases",
-  "List a repo's releases (tag, title, notes), newest first.",
-  { owner: z.string(), repo: z.string(), per_page: z.number().default(10) },
-  async ({ owner, repo, per_page }) => {
-    const rels = await listReleases(owner, repo, per_page);
-    return text(
-      rels.map((r) => `## ${r.name || r.tag_name} (${r.published_at})\n${r.body}`).join("\n\n") || "No releases."
-    );
+  "list_tailored_resumes",
+  "List all tailored resume versions with company/role/status.",
+  {},
+  async () => {
+    const ts = listTailoredResumes();
+    if (!ts.length) return text("No tailored resumes yet.");
+    return text(ts.map((t) => `${t.slug}: ${t.role} @ ${t.company} [${t.status}]`).join("\n"));
   }
 );
 
 server.tool(
-  "github_get_file",
-  "Read a file's content from a repo (e.g. a README or doc) at a given ref.",
-  { owner: z.string(), repo: z.string(), path: z.string(), ref: z.string().optional() },
-  async ({ owner, repo, path, ref }) => {
-    const f = await getFileContent(owner, repo, path, ref);
-    return text(f.content);
+  "set_tailored_resume_status",
+  "Mark a tailored resume as draft or sent.",
+  { slug: z.string(), status: z.enum(["draft", "sent"]) },
+  async ({ slug, status }) => {
+    setTailoredResumeStatus(slug, status);
+    return text(`"${slug}" is now ${status}.`);
   }
 );
 
+/* ---------- OUTREACH TRACKER (local CRM — no auto-sending, no scraping) ---------- */
+
 server.tool(
-  "github_write_file",
-  "Create or update a file in a repo (auto-detects if it exists). Commits directly.",
+  "save_contact",
+  "Create or update a contact you plan to reach out to on LinkedIn.",
   {
-    owner: z.string(),
-    repo: z.string(),
-    path: z.string(),
-    content: z.string(),
-    message: z.string().describe("Commit message."),
-    branch: z.string().optional(),
+    slug: z.string().describe("Filename-safe id, e.g. jane-doe-acme."),
+    name: z.string(),
+    company: z.string(),
+    role: z.string(),
+    notes: z.string().default(""),
   },
-  async ({ owner, repo, path, content, message, branch }) => {
-    const r = await createOrUpdateFile(owner, repo, path, content, message, branch);
-    return text(`Committed ${path}. ${r.html_url ?? ""}`);
+  async ({ slug, name, company, role, notes }) => {
+    saveContact(slug, name, company, role, notes);
+    return text(`Saved contact "${slug}".`);
   }
 );
 
 server.tool(
-  "github_create_gist",
-  "Create a gist from one or more files — handy for a code snippet linked from a LinkedIn post.",
+  "read_contact",
+  "Read a contact's details and message history.",
+  { slug: z.string() },
+  async ({ slug }) => {
+    const c = readContact(slug);
+    return text(`${c.name} — ${c.role} @ ${c.company} [${c.status}]\n\n${c.body}`);
+  }
+);
+
+server.tool(
+  "list_contacts",
+  "List all tracked contacts with status.",
+  {},
+  async () => {
+    const cs = listContacts();
+    if (!cs.length) return text("No contacts yet.");
+    return text(cs.map((c) => `${c.slug}: ${c.name} @ ${c.company} [${c.status}]`).join("\n"));
+  }
+);
+
+server.tool(
+  "set_contact_status",
+  "Update a contact's status (to_contact/contacted/replied/interview/closed).",
   {
-    description: z.string(),
-    files: z.record(z.string(), z.string()).describe("Map of filename -> file content."),
-    public: z.boolean().default(false),
+    slug: z.string(),
+    status: z.enum(["to_contact", "contacted", "replied", "interview", "closed"]),
   },
-  async ({ description, files, public: isPublic }) => {
-    const g = await createGist(description, files, isPublic);
-    return text(`Created gist: ${g.html_url}`);
+  async ({ slug, status }) => {
+    setContactStatus(slug, status);
+    return text(`"${slug}" is now ${status}.`);
   }
 );
 
 server.tool(
-  "github_create_issue",
-  "File an issue — e.g. to track a content idea or a doc that needs writing.",
-  {
-    owner: z.string(),
-    repo: z.string(),
-    title: z.string(),
-    body: z.string().optional(),
-    labels: z.array(z.string()).optional(),
-  },
-  async ({ owner, repo, title, body, labels }) => {
-    const i = await createIssue(owner, repo, title, body, labels);
-    return text(`Created issue #${i.number}: ${i.html_url}`);
-  }
-);
-
-server.tool(
-  "github_create_pull_request",
-  "Open a pull request, e.g. after committing a docs/README update to a branch.",
-  {
-    owner: z.string(),
-    repo: z.string(),
-    title: z.string(),
-    head: z.string().describe("Branch with the changes."),
-    base: z.string().describe("Branch to merge into, e.g. main."),
-    body: z.string().optional(),
-  },
-  async ({ owner, repo, title, head, base, body }) => {
-    const pr = await createPullRequest(owner, repo, title, head, base, body);
-    return text(`Opened PR #${pr.number}: ${pr.html_url}`);
-  }
-);
-
-server.tool(
-  "github_search_code",
-  "Search code across your accessible repos (and public GitHub) for examples or references.",
-  { query: z.string(), per_page: z.number().default(10) },
-  async ({ query, per_page }) => {
-    const r = await searchCode(query, per_page);
-    return text(
-      r.items.map((i) => `${i.repository.full_name}: ${i.path} — ${i.html_url}`).join("\n") || "No results."
-    );
+  "log_outreach_message",
+  "Save a drafted or sent message to a contact's history, timestamped. You send it yourself on LinkedIn.",
+  { slug: z.string(), message: z.string() },
+  async ({ slug, message }) => {
+    logMessage(slug, message);
+    return text(`Logged message for "${slug}".`);
   }
 );
 

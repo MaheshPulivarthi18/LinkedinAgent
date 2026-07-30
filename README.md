@@ -1,6 +1,7 @@
 # linkedin-mcp
 
-A personal MCP server for managing your LinkedIn content from Cursor.
+A personal LinkedIn career copilot — MCP server for managing your LinkedIn
+content, profile, resume, and job-search outreach from Cursor.
 
 **What it does via the API (self-serve, no partner approval):**
 - Publish text posts, image posts, and document/carousel posts to your own feed.
@@ -10,13 +11,26 @@ A personal MCP server for managing your LinkedIn content from Cursor.
 - Convert markdown → LinkedIn-ready text (unicode bold/italic, bullets, spacing).
 - Lint posts (length, hook, hashtags).
 - Track draft status (idea / ready / scheduled / published).
+- Draft and iterate on profile copy (headline, About, skills, featured) with
+  LinkedIn's real character limits enforced.
+- Keep a master resume plus tailored versions per job/company.
+- Track outreach: draft connection-request and follow-up messages, and log
+  where each conversation stands (to_contact / contacted / replied / interview / closed).
 
-**What it cannot do (LinkedIn limitation, applies to everyone including Buffer):**
-- Create or edit **articles** via API. Articles are web-editor-only. This tool
-  gets your article draft *ready to paste*; you hit publish by hand.
-- Read analytics, connections, or search (partner-gated).
-
-Do **not** add browser-cookie automation to fake these — that's how accounts get banned.
+**What it deliberately does NOT do, and why:**
+- **No auto-connecting, searching, or reading other people's profiles/connections.**
+  LinkedIn does not expose this to individual developers — it's gated behind
+  their Talent/Marketing Partner program, which isn't self-serve. The only way
+  around that is browser automation or scraping, which is how accounts get
+  banned. This tool won't do it. You decide who to contact and you hit send —
+  the tool just kills the blank-page problem and keeps you organized.
+- **No profile writes via API.** LinkedIn has no developer API for editing your
+  headline/About/experience. The profile tools here draft and lint text for
+  you to paste in yourself.
+- **No article publishing via API.** Articles are web-editor-only for
+  everyone (including tools like Buffer). This gets your draft *ready to
+  paste*; you hit publish by hand.
+- **No analytics.** Also partner-gated.
 
 ---
 
@@ -60,7 +74,10 @@ Cursor → Settings → **MCP** → add a server. Or edit `~/.cursor/mcp.json`:
       "env": {
         "LINKEDIN_CLIENT_ID": "xxx",
         "LINKEDIN_CLIENT_SECRET": "yyy",
-        "LINKEDIN_DRAFTS_DIR": "/ABSOLUTE/PATH/TO/linkedin-drafts"
+        "LINKEDIN_DRAFTS_DIR": "/ABSOLUTE/PATH/TO/linkedin-drafts",
+        "LINKEDIN_PROFILE_DIR": "/ABSOLUTE/PATH/TO/linkedin-profile",
+        "LINKEDIN_RESUME_DIR": "/ABSOLUTE/PATH/TO/linkedin-resumes",
+        "LINKEDIN_OUTREACH_DIR": "/ABSOLUTE/PATH/TO/linkedin-outreach"
       }
     }
   }
@@ -71,12 +88,26 @@ Restart Cursor. You should see the `linkedin` tools available in chat.
 
 ## 5. Use it
 
+**Content**
 - "Save this as a draft called grpc-mesh" → `save_draft`
 - "Format grpc-mesh for LinkedIn" → `format_for_linkedin`
 - "Lint it" → `lint_post`
 - "Publish it" → `publish_text_post`
 - For an article: `save_draft` with type=article, then `prepare_article_for_paste`,
   then paste into LinkedIn's **Write article** editor and publish manually.
+
+**Profile**
+- "Tighten my headline for keyword search" → paste current text, get a rewrite,
+  `save_profile_section` → `lint_profile_section` → paste into LinkedIn →
+  `set_profile_section_status` to `current`.
+
+**Resume**
+- `save_master_resume` once, then per job: `save_tailored_resume` with the
+  company/role, iterate, `set_tailored_resume_status` to `sent` once submitted.
+
+**Outreach**
+- `save_contact` for someone you want to reach out to, draft a note, `log_outreach_message`,
+  send it yourself on LinkedIn, then `set_contact_status` as the conversation progresses.
 
 ## Notes
 

@@ -1,7 +1,7 @@
 {
   "name": "linkedin-mcp",
   "version": "0.1.0",
-  "description": "Personal LinkedIn MCP server — draft locally, publish posts via API, keep articles manual.",
+  "description": "Personal LinkedIn career copilot — content, profile, resume, and outreach, all git-friendly and local-first.",
   "type": "module",
   "bin": {
     "linkedin-mcp": "dist/index.js"

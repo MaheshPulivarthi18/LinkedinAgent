@@ -25,9 +25,17 @@ export const REDIRECT_URI =
 export const DRAFTS_DIR =
   process.env.LINKEDIN_DRAFTS_DIR ?? join(homedir(), "linkedin-drafts");
 
-// GitHub: a single personal access token (classic, full scopes) — no OAuth
-// dance needed. Generate at https://github.com/settings/tokens.
-export const GITHUB_TOKEN = process.env.GITHUB_TOKEN ?? "";
+// Where profile-section drafts (headline/about/skills/etc) live.
+export const PROFILE_DIR =
+  process.env.LINKEDIN_PROFILE_DIR ?? join(homedir(), "linkedin-profile");
+
+// Where your master + tailored resumes live.
+export const RESUME_DIR =
+  process.env.LINKEDIN_RESUME_DIR ?? join(homedir(), "linkedin-resumes");
+
+// Where outreach/contact tracking lives.
+export const OUTREACH_DIR =
+  process.env.LINKEDIN_OUTREACH_DIR ?? join(homedir(), "linkedin-outreach");
 
 export interface StoredToken {
   access_token: string;
